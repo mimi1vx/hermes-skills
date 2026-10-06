@@ -42,6 +42,45 @@ Keep a fallback to all `<p>` if the class is ever renamed, but verify the
 fallback isn't firing (count of matched paragraphs should be non-zero and the
 per-chapter word count should look stable across chapters).
 
+## Verification that actually catches contamination
+
+A count check (`grep -ci Copyright <site>`) proves nothing about the body text.
+Run `scripts/clean_chapters.py` in dry-run mode and a pattern sweep over the
+chapter files before shipping; then re-check the packaged formats.
+
+Findings that only a pattern sweep surfaces, all from real runs:
+
+- **Site furniture**: `————` separator paragraphs (388 in one book), plus
+  ASCII `------` variants. Check both dash styles.
+- **MTL translator notes**: `ps: it takes twenty minutes to check for typos.`
+  (168). Two were never translated from Chinese — scan for CJK residue too.
+- **Author end-of-chapter notes**: monthly-pass begging (84), plus a closing
+  sign-off block that may carry no marker at all — ch2139's farewell ran from
+  its 85th paragraph to the end. Prefer a `(End of the book)` marker or a run
+  of >=2 sign-off lines at the TAIL; `Thanks!` and `Happy New Year!` also occur
+  as ordinary dialogue, so a global regex eats story text.
+- **Anti-piracy watermarks hidden in Unicode math script**: the site appends
+  `𝒻𝒓𝒆𝒆𝒘𝒆𝒃𝓃𝒐𝒗𝒆𝓁.𝒸𝑜𝓂` to the END of ~1,100 paragraphs in MIXED font styles. A
+  grep for `freewebnovel` never sees it and the whole-domain string never
+  appears as a contiguous run. Two consequences:
+  - Normalise per character (NFKC) and keep a 1:1 index back to the original.
+    Whole-string NFKC is unsafe: 1,120 paragraphs change length under it, so
+    offsets into the normalised text don't address the original.
+  - Every codepoint inside a watermark must be in the mapping class. U+0212F
+    (SCRIPT SMALL E) and U+02134 (SCRIPT SMALL O) sit in LETTERLIKE SYMBOLS,
+    not the Mathematical Alphanumeric block — omitting them silently left 254
+    chapters stamped. Guard the pattern and re-run the scan until the count is
+    zero; a partial pass looks identical to a clean book.
+  - Guard removal on "the reassembled letters spell a known domain", so real
+    math in a xianxia novel survives. Test against paragraphs harvested from
+    the book that contain math but no watermark: 0/75 collateral on the last run.
+
+**Keep deliberate oddities.** ch1977's `"&...%￥#"` is garbled speech inside a
+distorted space — it is the story, not a watermark. Likewise ch1947's "The next
+Chapter shall begin anew" follows "The Chapter of three eras has nearly
+ended": cultivation-world verse about an era closing. Judge each hit in
+context; a blanket delete removes real text.
+
 ## Pitfalls that cost real time
 
 - **Chapter URLs need the series prefix.** The series page links are
@@ -98,9 +137,13 @@ per-chapter word count should look stable across chapters).
 
 ## Scripts
 
+- `scripts/make_pdf.py <dir> [title] [source-site] [--chunk=N]` — chunked
+  weasyprint render + pypdf merge.
+- `scripts/clean_chapters.py <dir> [--apply]` — dry run by default; strips
+  separators, MTL notes, author notes, and math-script watermarks.
 - `scripts/scrape_series.py <series-slug>` — TOC fetch, chapter scrape
   (scoped, resumable), verification summary.
-- `scripts/package_book.py <dir>` — combined txt + epub, numeric order.
+- `scripts/package_book.py <dir> [title] [source-site]` — combined txt + epub.
 - `scripts/make_pdf.py <dir>` — weasyprint PDF, A5, page break per chapter.
 
 Dependencies (not in system python; make a uv venv):
