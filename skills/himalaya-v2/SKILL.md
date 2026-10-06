@@ -149,6 +149,30 @@ command: `{ command = ["pass", "show", "foo"] }` (also `secret-tool`, `gopass`,
 `security`). Native keyring was removed. OAuth tokens come from an external broker
 such as `pimalaya/ortie`, consumed the same way: `{ command = ["ortie", "token", "show", "-a", "gmail"] }`.
 
+## Pitfalls
+
+These cost real time to rediscover; each one silently produces wrong results rather
+than an error.
+
+- **Positional queries are greedy — options come BEFORE the query.** The trailing
+  argument is swallowed as part of the query string, so
+  `himalaya envelope search "after 2026-09-01"` treats `after 2026-09-01` as search
+  text and matches nothing (or everything). Correct shape:
+  `himalaya envelope search -s 500 "after 2026-09-01 and flag seen"`.
+- **There is no `before` filter.** v2 dropped it; use `before:` in a query clause
+  or filter on the returned date field.
+- **Join filters with `and`** — the query language is not implicit.
+- **The table's FLAGS column means STARRED, not seen.** A message can read as
+  unread in the list while being starred, and vice versa. To find genuinely
+  unread mail, search `subject X and flag seen` and subtract; never trust the
+  column.
+- **Never run a bare `flag seen` search.** It has no date bound and scans the
+  whole mailbox. Always combine with `after <date>` (or another narrowing clause)
+  so a mark-as-read sweep cannot touch historical mail.
+- **`message delete` is trash-first**, not a hard delete: the message moves to the
+  trash mailbox and is recoverable. `flags add + expunge` is the destructive path.
+- **Trash folder name is not stable** — see the Bin/Trash note above.
+
 ## Setup checklist (for the agent)
 
 1. `himalaya --version` — must be >= 2.0.0; otherwise don't use this skill.
