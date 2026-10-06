@@ -1,0 +1,77 @@
+{
+  "groupings": [
+    {
+      "title": "Autonomous Ai Agents",
+      "skills": [
+        "hermes-memory-maintenance",
+        "hermes-model-management",
+        "kanban-dispatch",
+        "opencode-v2"
+      ]
+    },
+    {
+      "title": "Devops",
+      "skills": [
+        "apple-container",
+        "self-hosted-title-400"
+      ]
+    },
+    {
+      "title": "Email",
+      "skills": [
+        "email-bulk-cleanup",
+        "email-bulk-maintenance",
+        "gmail-maintenance",
+        "himalaya-v2"
+      ]
+    },
+    {
+      "title": "Productivity",
+      "skills": [
+        "ste-english"
+      ]
+    },
+    {
+      "title": "Research",
+      "skills": [
+        "webnovel-scrape-pack"
+      ]
+    },
+    {
+      "title": "Social Media",
+      "skills": [
+        "telegram",
+        "whatsapp"
+      ]
+    },
+    {
+      "title": "Software Development",
+      "skills": [
+        "change-walkthrough",
+        "changelog-generator",
+        "debug-loop",
+        "deep-performance-audit",
+        "deep-project-primer",
+        "git-commit",
+        "github",
+        "idea-wizard",
+        "karpathy-guidelines",
+        "pr-review",
+        "readme-reviser",
+        "sota-architecture",
+        "sota-async-concurrency",
+        "sota-code-security",
+        "sota-haskell",
+        "sota-llm-engineering",
+        "sota-ml-engineering",
+        "sota-observability",
+        "sota-perl",
+        "sota-python",
+        "sota-rust",
+        "sota-testing",
+        "sota-typescript",
+        "spec-to-plan"
+      ]
+    }
+  ]
+}
