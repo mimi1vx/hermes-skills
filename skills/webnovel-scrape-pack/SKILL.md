@@ -107,6 +107,11 @@ Dependencies (not in system python; make a uv venv):
 
     uv venv epubenv && uv pip install -p epubenv/bin/python ebooklib weasyprint pypdf
 
+Memory ceiling: `make_pdf.py` renders in chunks (default 50 chapters, `--chunk=N`)
+and merges with pypdf. A single-shot weasyprint build of a 2,900k-word novel was
+OOM-killed by the cgroup limit at ~2.9 GB RSS, because it holds the whole
+document tree in memory. Chunked rendering keeps peak RSS flat.
+
 ## Notes
 
 - Respect the site's terms and rate: this pipeline sleeps 0.5s per request
