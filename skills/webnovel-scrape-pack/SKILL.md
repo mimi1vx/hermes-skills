@@ -81,6 +81,28 @@ Chapter shall begin anew" follows "The Chapter of three eras has nearly
 ended": cultivation-world verse about an era closing. Judge each hit in
 context; a blanket delete removes real text.
 
+## Pick the source by testing, not by search results
+
+Search engines return five or six mirrors of the same serial; most are worse than
+the one you want. Fetch chapter 1 from EVERY candidate and compare paragraph
+counts and the first/last line of the extracted text before committing to a
+3,000-chapter run. Measured on Shadow Slave (2026-10-06), same novel, four
+sites:
+
+    freewebnovel.com   57 paras, chapter-start scoping works -> USE
+    novgo.net          65 paras, nav header/footer bleeds in
+    freewebnovel.net   65 paras, same bleed, and a duplicate chapter listing
+    readnovelfull.com  clean prose but no scoping hooks at all
+    wuxiadreams.com    100-chapter cap; 91 of 100 <p> are JS/CSS
+
+A site's index page loading 200 is not evidence it is scrapable, and a
+"cloudflare" grep is not a reliable block detector — challenge-platform script
+tags appear on pages that serve content fine. Judge by extracted paragraphs.
+
+`discover_max` must probe past the highest linked chapter (3205 here; 3206 404s),
+and the series is often still ongoing, so "completed" in a search snippet is not
+a chapter count.
+
 ## Pitfalls that cost real time
 
 - **Chapter URLs need the series prefix.** The series page links are
@@ -103,7 +125,21 @@ context; a blanket delete removes real text.
   download). Don't spend time on it; build the epub without a cover.
 - **Sanity-check the last chapter's tail.** It should end with the real final
   line (often `(The End)`), not a teaser or copyright line. That single check
-  catches junk-contamination immediately.
+  catches junk-contamination immediately. Same for the FIRST chapter: Shadow
+  Slave's ch1 ends on `[Aspirant! Welcome to the Nightmare Spell...]`, a system
+  line that is genuinely part of the story, not boilerplate to strip.
+- **A `ps:`-shaped regex matches ordinary words.** `^ps\s*:` is safe, but a
+  loose `ps:` substring hits `lips:` and `maps:` — seven false hits in one epub
+  prompted a pointless detour. Anchor line-start patterns.
+- **The cleanup step is one watermark CLASS per pass.** Removing full domains
+  leaves bare `free`/`ree` fragments that need a second, differently-anchored
+  rule. Always re-run `clean_chapters.py` until it reports 0 touched, then
+  confirm with an NFKC scan for any remaining math-script run. Two classes over
+  3,205 chapters: 1,608 + 29.
+- **Chunk size must shrink as the book grows.** 50 chapters of xianxia (~2.9k
+  words each) peaked near the memory ceiling for a 3.2M-word book; Shadow Slave's
+  ~1.2k-word chapters ran the same 50 fine at 3.9M words. Start at 50 and lower
+  it if a build is OOM-killed.
 - **Verify PDFs by parsing them** (`pypdf`), not by grepping the bytes — PDF
   1.7 compresses object streams, so `/Type /Page` regex finds nothing in a
   perfectly valid file.
