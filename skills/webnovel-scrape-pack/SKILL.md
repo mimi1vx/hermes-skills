@@ -71,6 +71,14 @@ per-chapter word count should look stable across chapters).
 - **Can't verify from a guessed slug** — a hand-typed chapter URL returns
   404/empty and looks like broken extraction. Read the real slug from
   `chapter_urls.txt`.
+- **Never hardcode the source domain in the packaging scripts.** These scripts
+  get reused across sites, and a constant like `scraped from nobadnovel.com`
+  stamps a false provenance on the title page of a book actually scraped from
+  freewebnovel.com. Take the site as a positional arg (or `$SCRAPE_SOURCE`).
+- **The junk check must exempt the title page.** `grep -ci Copyright\|<site>`
+  hits line 3 — the provenance line you just wrote. Require the count to be
+  exactly 1 for the site name, and inspect every other hit before calling it
+  contamination.
 
 ## Pipeline
 

@@ -1,16 +1,23 @@
 #!/usr/bin/env python3
 """Package scraped chapter .md files into a combined txt and an epub.
 
-Usage:  python3 package_book.py <book-dir> [title]
+Usage:  python3 package_book.py <book-dir> [title] [source-site]
 
 Chapters are ordered NUMERICALLY (chapter-1, chapter-2, ... chapter-1076);
 plain lexicographic sort puts chapter-1000 before chapter-100.
+
+source-site goes on the title page and is REQUIRED in practice: the same
+scripts are reused across nobadnovel / freewebnovel / novelrare, and a
+hardcoded site name ships a false provenance line. Defaults to
+$SCRAPE_SOURCE, then to "the web" rather than inventing a domain.
 """
 import os
 import re
 import sys
 import glob
 import html as html_mod
+
+DEFAULT_SOURCE = os.environ.get("SCRAPE_SOURCE") or "the web"
 
 
 def chap_num(fname):
@@ -31,9 +38,9 @@ def load(bookdir):
     return chapters
 
 
-def write_txt(chapters, path, title):
+def write_txt(chapters, path, title, source=DEFAULT_SOURCE):
     with open(path, "w", encoding="utf-8") as f:
-        f.write(f"{title}\n\nscraped from nobadnovel.com\n")
+        f.write(f"{title}\n\nscraped from {source}\n")
         for num, ctitle, text in chapters:
             f.write(f"\n\n{'=' * 60}\nCHAPTER {num}\n{'=' * 60}\n\n{ctitle}\n\n{text}\n")
     print(f"[txt] {path} ({os.path.getsize(path) // 1024} KB, {len(chapters)} chapters)")
@@ -72,7 +79,8 @@ def main():
     words = sum(len(t.split()) for _, _, t in chapters)
     print(f"[package] {len(chapters)} chapters, {words:,} words")
     base = os.path.join(bookdir, "book")
-    write_txt(chapters, base + ".txt", title)
+    source = sys.argv[3] if len(sys.argv) > 3 else DEFAULT_SOURCE
+    write_txt(chapters, base + ".txt", title, source)
     write_epub(chapters, base + ".epub", title)
 
 

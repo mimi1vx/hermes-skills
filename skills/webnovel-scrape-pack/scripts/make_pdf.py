@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
 """Render scraped chapter .md files to a single PDF with weasyprint.
 
-Usage:  python3 make_pdf.py <book-dir> [title]
+Usage:  python3 make_pdf.py <book-dir> [title] [source-site]
 
 A5 pages, justified text, page break before every chapter, cover page.
 Verify the result with pypdf -- PDF 1.7 compresses object streams so grepping
 the bytes for /Type /Page finds nothing in a valid file.
+
+The source site is a positional argument, never a constant: one script serves
+several novel sites and a hardcoded name puts a false domain on the cover.
+Defaults to $SCRAPE_SOURCE, then to "the web".
 """
 import os
 import re
 import sys
 import glob
 import html as html_mod
+
+DEFAULT_SOURCE = os.environ.get("SCRAPE_SOURCE") or "the web"
 
 CSS = """
 @page { size: A5; margin: 2.2cm 1.8cm; }
@@ -33,13 +39,15 @@ def chap_num(fname):
 def main():
     bookdir = sys.argv[1] if len(sys.argv) > 1 else "."
     title = sys.argv[2] if len(sys.argv) > 2 else "Web Novel"
+    source = sys.argv[3] if len(sys.argv) > 3 else DEFAULT_SOURCE
 
     files = sorted(glob.glob(os.path.join(bookdir, "out", "*.md")),
                    key=lambda f: chap_num(os.path.basename(f)))
     print(f"[pdf] {len(files)} chapters")
 
     body = [f'<div class="cover"><h1 class="titlepage">{html_mod.escape(title)}</h1>'
-            f'<p style="text-align:center">scraped from nobadnovel.com</p></div>']
+            f'<p style="text-align:center">scraped from '
+            f'{html_mod.escape(source)}</p></div>']
     for f in files:
         raw = open(f, encoding="utf-8").read().strip()
         m = re.match(r"#\s*(.*?)\n", raw)
