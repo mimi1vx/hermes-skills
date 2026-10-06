@@ -19,7 +19,7 @@ cd "$REPO"
 RED=$'\033[31m'; GRN=$'\033[32m'; YEL=$'\033[33m'; DIM=$'\033[2m'; OFF=$'\033[0m'
 
 repo_skills() { find skills -mindepth 1 -maxdepth 1 -type d -exec test -f '{}/SKILL.md' ';' -print 2>/dev/null | sed 's|^skills/||' | sort; }
-installed_skills() { find "$HERMES_HOME/skills" -name SKILL.md -not -path '*/.*' -exec test -f '{}/SKILL.md' ';' -print 2>/dev/null | sed "s|^$HERMES_HOME/skills/||" | awk -F/ '{print $NF}' | sort; }
+installed_skills() { find "$HERMES_HOME/skills" -name SKILL.md -not -path '*/.*' -print 2>/dev/null | sed "s|^$HERMES_HOME/skills/||; s|/SKILL\.md\$||" | awk -F/ '{print $NF}' | sort -u; }
 
 # Categories come from the repo's own skills.sh.json, so a skill installs into the
 # same category folder the profile already uses (social-media/whatsapp, not a new
