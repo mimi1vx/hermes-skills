@@ -92,9 +92,6 @@ def strip_watermark(text):
     flat = "".join(norm_chars).lower()
 
     spans = list(WATERMARK_RE.finditer(flat))
-    if not spans:
-        return text, 0
-
     drop = set()
     for m in spans:
         lo, hi = orig_index[m.start()], orig_index[m.end() - 1] + 1
@@ -105,9 +102,34 @@ def strip_watermark(text):
         drop.update(range(lo, hi))
 
     out = "".join(ch for i, ch in enumerate(text) if i not in drop)
+    if not spans and out == text:
+        # No full domain matched. A leftover fragment can sit at the end of ANY
+        # paragraph, not just the last one, so check per paragraph -- anchoring
+        # on the end of the whole text removed 1 of 74 fragments.
+        paras = out.split("\n\n")
+        changed = 0
+        for i, p in enumerate(paras):
+            # allow leading punctuation: the site sometimes leaves a closing
+            # curly quote attached to the fragment, as in '...said. "𝒻𝒓𝒆ℯ'
+            m = re.search(r"([^\x00-\x7f]+)[ \t]*$", p)
+            if not m:
+                continue
+            frag = unicodedata.normalize("NFKC", m.group(1)).lower()
+            if frag in ("free", "ree", "webnovel", "vel", "wenol"):
+                paras[i] = p[:m.start()].rstrip()
+                changed += 1
+            elif frag.lstrip("”’\"'") in ("free", "ree", "webnovel", "vel", "wenol"):
+                lead = len(frag) - len(frag.lstrip("”’\"'"))
+                keep = m.start() + lead
+                paras[i] = p[:keep].rstrip()
+                changed += 1
+        if changed:
+            return "\n\n".join(paras), changed
+
     # an inline rule left beside a stamp is site furniture too
     out = re.sub(r"[ \t]*[—–-]{4,}[ \t]*", " ", out)
     out = re.sub(r"[ \t]{2,}", " ", out).strip()
+
     return out, len(spans)
 
 # author notes: monthly-pass begging, thank-yous, next-chapter teasers
