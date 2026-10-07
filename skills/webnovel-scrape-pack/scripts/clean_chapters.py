@@ -199,7 +199,7 @@ SIGN_OFF = re.compile(
 
 
 def chap_num(fname):
-    m = re.search(r"chapter-(\d+)-", fname)
+    m = re.search(r"chapter-(\d+)(?:-|\.|$)", fname)
     return int(m.group(1)) if m else 10 ** 9
 
 
@@ -243,7 +243,7 @@ def main():
     outdir = os.path.join(bookdir, "out")
 
     files = sorted((f for f in os.listdir(outdir)
-                    if re.fullmatch(r"chapter-\d+-.*\.md", f)), key=chap_num)
+                    if re.fullmatch(r"chapter-\d+.*\.md", f)), key=chap_num)
 
     removed = {"separator": 0, "ps-note": 0, "author-note": 0, "sign-off": 0,
                "math-watermark": 0}

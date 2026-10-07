@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Scrape a nobadnovel.com series into per-chapter markdown files.
+"""Scrape a webnovel series page into per-chapter markdown files.
 
-Usage:  python3 scrape_series.py <series-slug> [outdir] [--refresh]
+Usage:  python3 scrape_series.py <series-slug> [outdir] [--base URL] [--refresh]
 
   <series-slug>   e.g. the-villain-my-system-is-not-so-serious
   [outdir]        default: out
+  --base URL      series site origin; $SCRAPE_BASE, else nobadnovel.com.
+                  One scraper serves many sites (see scrape_fwn.py), so the
+                  domain is a parameter, never a constant.
   --refresh       re-fetch chapters even if their .md already exists
                   (needed after changing the extraction rules)
 
@@ -18,7 +21,7 @@ import time
 import html as html_mod
 import urllib.request
 
-BASE = "https://www.nobadnovel.com"
+BASE = (os.environ.get("SCRAPE_BASE") or "https://www.nobadnovel.com").rstrip("/")
 UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120 Safari/537.36")
 HEADERS = {"User-Agent": UA, "Accept-Language": "en-US,en;q=0.9"}
@@ -64,9 +67,9 @@ def parse_chapter(page):
     return title, lines
 
 
-def chapter_urls(series):
-    page = get(f"{BASE}/series/{series}")
-    urls = re.findall(rf'{BASE}/series/{re.escape(series)}/chapter-[^"\']*', page)
+def chapter_urls(series, base=BASE):
+    page = get(f"{base}/series/{series}")
+    urls = re.findall(rf'{base}/series/{re.escape(series)}/chapter-[^"\']*', page)
     seen, out = set(), []
     for u in urls:
         if u not in seen:
@@ -76,7 +79,7 @@ def chapter_urls(series):
 
 
 def chap_num(fname):
-    m = re.search(r"chapter-(\d+)-", fname)
+    m = re.search(r"chapter-(\d+)(?:-|\.|$)", fname)
     return int(m.group(1)) if m else 10 ** 9
 
 
@@ -117,13 +120,16 @@ def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     if not args:
         sys.exit(__doc__)
+    base = next((sys.argv[i + 1] for i, a in enumerate(sys.argv)
+                 if a == "--base" and i + 1 < len(sys.argv)), BASE)
+    base = base.rstrip("/")
     series = args[0]
     outdir = args[1] if len(args) > 1 else "out"
     refresh = "--refresh" in sys.argv
     os.makedirs(outdir, exist_ok=True)
 
-    urls = chapter_urls(series)
-    print(f"[toc] {len(urls)} chapters found")
+    urls = chapter_urls(series, base)
+    print(f"[toc] {len(urls)} chapters found  (base {base})")
     with open(os.path.join(outdir, "chapter_urls.txt"), "w", encoding="utf-8") as f:
         f.write("\n".join(urls) + "\n")
 

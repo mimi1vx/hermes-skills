@@ -39,7 +39,8 @@ p { margin: 0 0 0.9em 0; text-align: justify; }
 
 
 def chap_num(fname):
-    m = re.search(r"chapter-(\d+)-", fname)
+    # Same tolerant pattern as package_book.py -- see the note there.
+    m = re.search(r"chapter-(\d+)(?:-|\.|$)", fname)
     return int(m.group(1)) if m else 10 ** 9
 
 

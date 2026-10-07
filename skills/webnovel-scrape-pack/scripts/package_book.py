@@ -21,7 +21,10 @@ DEFAULT_SOURCE = os.environ.get("SCRAPE_SOURCE") or "the web"
 
 
 def chap_num(fname):
-    m = re.search(r"chapter-(\d+)-", fname)
+    # Accept both `chapter-12-slug.md` and zero-padded `chapter-0012.md`:
+    # different scrapers name chapters differently, and a required trailing
+    # dash made every file sort as 10**9 (and print CHAPTER 1000000000).
+    m = re.search(r"chapter-(\d+)(?:-|\.|$)", fname)
     return int(m.group(1)) if m else 10 ** 9
 
 
