@@ -446,6 +446,22 @@ not evidence that nothing ran.
 `out/` (per-chapter markdown) and the scraper used, so a re-run can pick up new
 chapters. Scratch is pruned after 24h idle — never leave the only copy there.
 
+**Two traps when auditing a book directory for completeness:**
+
+- **Naming drifts between packaging runs.** Earlier runs emitted
+  `book_<series-slug>.txt` instead of `book.txt`. A glob for `book.txt` alone
+  finds nothing and reads as "scraped but not packaged" — the book is sitting
+  there at 8 MB with 1,076 chapters. Check both patterns before declaring a
+  book unpackaged, and rename to the short form so one glob covers all books.
+- **Packaging runs can drop stub artifacts inside `out/`.** An `out/book.txt`
+  of a few paragraphs and an `out/book.epub` with an empty shelf are run
+  residue, not the book. Only the top-level `book.*` files count; delete the
+  out/ stubs so a chapter census doesn't inflate.
+
+A finished-book check is: all three of `book.{txt,epub,pdf}` exist and are
+non-empty, epub opens as a zip containing `mimetype`, pdf starts `%PDF-` and
+ends `%%EOF`, and unique chapter numbers in `out/` are gapless against the max.
+
 **Packaging needs a venv, and one is usually already on the box.** Look for
 an existing packaging venv (ebooklib, weasyprint, pypdf installed) before
 creating a new venv; a fresh `uv venv epubenv` under the book directory works
