@@ -140,6 +140,25 @@ keeps real math in a xianxia novel safe.
 
 ## Pick the source by testing, not by search results
 
+**Verify what the series actually IS before you assert anything about it.**
+Search snippets for a fan sequel read exactly like canon: same author name, a
+book number, a "series" name, even a plausible chapter count. One run spent a
+full search cycle asserting "book 3 of X, by Author Y, official mirror is Z"
+— all three invented from snippets, and the "official mirror" turned out to be a
+parked domain for sale. Before writing that sentence or opening a scraper:
+
+- Check an authority that knows the canon — publisher page (webnovel.com),
+  Wikipedia, or a novel database — and see whether the series is even listed.
+  If it isn't, treat the request as unverified rather than guessing.
+- Confirm the number of books from the source, not from a mirror's title slug.
+  A slug like `lord-of-mysteries-3-city-of-horror` is a mirror's guess, and the
+  rest of the family may not exist there at all (404 on the real index).
+- Fanfic, derivative, and copy titles are the common case for popular series.
+  Say "this looks like fan work, unverified" and ask for a URL instead of
+  inventing an author, a book number, and a host.
+- "Domain returns 200" is not "site is alive" — read the <title>; a parked or
+  for-sale page returns 200 forever.
+
 Search engines return five or six mirrors of the same serial; most are worse than
 the one you want. Fetch chapter 1 from EVERY candidate and compare paragraph
 counts and the first/last line of the extracted text before committing to a
