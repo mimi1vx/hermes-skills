@@ -83,6 +83,7 @@ lists directories under `skills/` and reads `<dir>/SKILL.md`, so a nested
 | Skill | Description |
 | --- | --- |
 | [webnovel-scrape-pack](skills/webnovel-scrape-pack) | Scrape a novel series into epub/pdf/txt |
+| [webnovel-source-recipes](skills/webnovel-source-recipes) | Per-site extraction recipes for serial sites |
 | [ste-english](skills/ste-english) | Write in Simplified Technical English |
 
 ### DevOps
