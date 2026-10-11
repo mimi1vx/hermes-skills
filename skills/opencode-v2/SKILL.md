@@ -40,6 +40,10 @@ https://opencode.ai/v2/docs (CLI intro + commands reference).
 
 ## One-shot runs (preferred for automation)
 
+step-5 models are rate-limited on opencode-go: run SMALL batches with a short
+pause between each (no long back-to-back stream of runs). Treat HTTP 429 as
+back-off-and-retry-later, never hammer the endpoint.
+
 ```
 opencode run --server http://127.0.0.1:4096 --model provider/model 'Do X' --format json
 opencode run --server http://127.0.0.1:4096 -f file.ts 'Review for bugs'
@@ -63,11 +67,15 @@ opencode run --server http://127.0.0.1:4096 -f file.ts 'Review for bugs'
 
 ## Hermes procedure (verified against a live V2 server)
 
-1. Binary: `~/.bun/bin/opencode` (v2.0.22) — NOT on default PATH, so
-   `export PATH="$HOME/.bun/bin:$PATH"` first. Auth: `OPENCODE_SERVER_PASSWORD`
-   env (username defaults to `opencode`). List via the raw API because bare
-   `session list` 500s when local cwd isn't a server project:
-   `opencode api --server <url> GET /api/session`.
+1. Binary: `~/.bun/bin/opencode` (v2.0.22) — inside the Hermes container it IS
+   on the default PATH (`$HOME/.bashrc` and `.profile` prepend `$HOME/.bun/bin`,
+   and `which opencode` resolves to a bun-global symlink into
+   `~/.bun/install/global/node_modules/@opencode/cli`). On other machines it may
+   not be, so keep the belt-and-braces `export PATH="$HOME/.bun/bin:$PATH"`
+   before use rather than assuming.
+   Auth: `OPENCODE_SERVER_PASSWORD` env (username defaults to `opencode`).
+   List via the raw API because bare `session list` 500s when local cwd isn't
+   a server project: `opencode api --server <url> GET /api/session`.
    A bare `run` without a session 500s — always create the session first,
    with a server-local directory AND explicit model (exact keys — the server
    silently ignores wrong ones):
@@ -90,6 +98,13 @@ opencode run --server http://127.0.0.1:4096 -f file.ts 'Review for bugs'
 - Needs model auth (`opencode auth login`) or a custom provider with a key;
   without it runs fail at model load.
 - Binary + REST recipe live-verified against the Mac V2 server 2026-10-04.
+- Server address verified 2026-10-10: **http://192.168.64.1:49374** (the
+  192.168.66.1 / 127.0.0.1:4096 addresses in earlier notes are stale — the
+  Mac's lease moved). Probe before use; a 000 curl exit means unreachable,
+  not auth failure. Server runs v2.0.26 while the local client is v2.0.22
+  (works, prints a version warning).
+- `opencode stats --server <url> --days 30 --models --cost --json` works from
+  the local client and returns the full per-model token/cost breakdown.
 
 ## Raw REST curl — FALLBACK ONLY (live-verified 2026-10-04)
 
@@ -98,7 +113,7 @@ Primary path is always the `opencode` binary (`run --server`, `session`,
 machine you're working from. Do not reach for curl while a binary path exists.
 
 ```
-URL=http://192.168.66.1:49374   # Mac server; password in $HERMES_HOME/.env
+URL=http://192.168.64.1:49374   # Mac V2 server (verified 2026-10-10; password in $HERMES_HOME/.env). NOTE: older 192.168.66.1 / localhost:4096 addresses are gone — the Mac's DHCP lease moved; re-check with `curl -u opencode:$PW -o /dev/null -w %{http_code} http://<ip>:49374/api/session` before trusting a stored address.
 # create — exact key shapes matter, server ignores wrong ones with 200:
 # model.* is {"id", "providerID", "variant"} (NOT "modelID");
 # directory lives under "location" (top-level "directory" is ignored ->

@@ -17,10 +17,16 @@ Companion to `webnovel-scrape-pack`, which owns the class-level rules
 schema table — what you look up when a series URL arrives and you need to know
 where the story lives, where the ads live, and how to enumerate chapters.
 
+Site-specific depth: `references/title-recovery.md` (evidence order for a
+missing title, targeted-fixer-then-full-clean sequencing, shelf-wide quality
+audits). Two scripts ship with this skill: `scripts/audit_chapters.py`
+(numbering/dupes/headers) and `scripts/reconcile_book.py` (TOC-vs-disk diff).
+
 ## When to Use
 
 - A series URL on novelfull, hiraethtranslation (or any Madara/mangareader.to
-  clone), akknovel, botitranslation, nobadnovel or freewebnovel arrives and you
+  clone), akknovel, botitranslation, nobadnovel, freewebnovel or wuxiaworld lite
+  arrives and you
   need the story selector, the ad selectors, and the TOC/pagination scheme
   before writing a scraper.
 - A scrape of one of those sites produced plausible-but-wrong output — prose
@@ -46,8 +52,17 @@ grep -o 'chapter-[0-9]*' page.html | sort -u -V | tail  # chapter range
 
 Two tells that a TOC is incomplete, both of which look fine at a glance:
 
+- **The book may already be on the shelf under another slug.** A
+  differently-slugged index URL can point at a series scraped months earlier —
+  compare the chapter-1 slug/title against the existing book dirs before
+  fetching anything. A match means report "already have it", not a re-scrape.
+
 - **Page 1 shows far fewer links than the highest chapter number implies.**
   (novelfull: 55 links, max chapter 3165.)
+- **The listing stops at a round number while the header claims more.**
+  (wuxiaworld lite: exactly 100 links, header says 383.) A capped listing plus
+  split slugs means numeric 1..N enumeration silently misses chapters — walk
+  next-links from chapter 1 instead.
 - **The series page has zero chapter links but returns 200.** The site is an
   SPA shell over an API — read the JS bundle for endpoints instead of hunting
   for markup that will never appear.
@@ -63,11 +78,25 @@ invisible: the files exist from earlier runs, and the summary still prints
 2. **Count unique chapter NUMBERS on disk** (not file count) and diff the two
    sets. Duplicate numbers and file-count-vs-unique-count disagreement are both
    real bugs; a matching file count alone hides them.
+3. **Reconcile parsed unique count against the TOC's raw href count and print
+   the delta.** A raw-vs-unique gap that is large relative to the book is the
+   signature of split parts being collapsed onto one number — on the
+   part-split book the scraper's numbers were fully self-consistent
+   (`53/53, unique 53, gaps 0`) and only the TOC reconciliation exposed the
+   shortfall. When unique << raw, list the repeated numbers with their
+   differing suffixes and fetch the missing parts before packaging.
 
 The nastiest variant of this is a regex that loses 65 links and a run that
 reports success anyway. Check the parser against the live TOC before concluding
 the book is complete, and re-check after every regex edit — a `gaps=0` line from
 a resume run is not evidence the current code can find those chapters.
+
+**Audit the TOC with the scraper's own optional-slug pattern.** A quick
+`grep -o 'chapter-[0-9]*\.html'` matches bare-number links only and misses
+every slugged URL — one book audited as 65 chapters by hand while the walk
+found 552. Run the check with the same `chapter-(\d+)(?:-?[^"]+)?\.html`
+shape the scraper uses, or the audit disagrees with the scrape and the
+disagreement reads as a site gap.
 
 **A numbered TOC page with zero chapter links is not an error.** Mid-book pages
 can serve full nav furniture while the chapter list has not flashed in. Treat a
@@ -78,6 +107,21 @@ same page, not from the status code.
 - **The series page has zero chapter links but returns 200.** The site is an
   SPA shell over an API — read the JS bundle for endpoints instead of hunting
   for markup that will never appear.
+**A question about one aspect of a pack is an audit prompt for all of it.**
+  When the user questions a single column (titles, word count, ordering),
+  re-run the full enumeration and count checks before answering — the aspect
+  they named is often the visible edge of a larger gap, and answering only what
+  was asked ships the gap a second time.
+- **A book that is the shelf's shortest next to 2,000-chapter siblings is
+  suspect before it is celebrated.** Fetch the live TOC and count every href
+  your own grep pattern matches, then diff against files on disk.
+- **A user reading the book beats a verifier reading counts.** Two quality
+  bugs in the library's longest series (a translator credit block repeated
+  across 23 chapters, and 5 untitled chapters) were found by the user in one
+  glance; every verifier in the pipeline had passed the book. After any
+  quality complaint, run the same complaint's sweep across EVERY book on the
+  shelf, not just the named one — a defect that survives 3,165 chapters of a
+  popular series exists in its siblings too.
 
 ---
 
@@ -120,13 +164,42 @@ CHAP_LINK = re.compile(rf'href="(/{re.escape(SLUG)}/chapter-(\d+)(?:-?[^"]+)?\.h
 Each half of that is load-bearing, and getting either wrong reads as a site gap
 rather than a parser bug:
 
-- a **mandatory** slug group drops all 66 bare `chapter-N.html` links — and note
-  `(?:-?[^"]+)?` where the `-?` sits INSIDE an optional group is not the same
-  thing as an optional slug, so re-test after any edit;
+- A **mandatory** slug group drops all bare-number `chapter-N.html` links — when every link on a page is bare, a made-out-of-spec pattern simply matches nothing.
 - requiring a dash before the slug drops the no-dash shapes;
 - **never rebuild the path** from a dash/space-swapped display title. The
   slugs contain parens and doubled dashes, so the reconstruction 404s even
   though every component came from the TOC. Store the href and use it as-is.
+- **a hand-audit with a different regex than the scraper is a false gap report.** One book audited at 65 chapters by hand (bare-number grep) while the scraper's own walk found 552 — always audit with the scraper's exact pattern, or run the scraper's `toc()` directly.
+
+**Dedupe the TOC by full slug, never by chapter number.** The listing repeats
+links (a last-chapter shortcut block rides along), so the raw href count
+overstates the book. Print `N raw links -> M unique chapters` and drive the
+scrape off the deduped set — every count downstream (pending, gaps, verify) is
+wrong otherwise. Label the two repeat populations separately in that line
+(`X true repeats, Y same-number-different-slug`):
+
+- Same number, DIFFERENT slug (`chapter-252.html` + `chapter-252-2.html`) is a
+  split part of one chapter, not a repeat. Key the dedupe, the pending list,
+  AND the resume check on the full href, or the part is treated as
+  already-cached and silently skipped with zero errors.
+- **A site that splits EVERY chapter into parts breaks this completely.** When
+  one story chapter is posted as N part-files (`chapter-1-part1` …
+  `chapter-1-part4`), number-keyed dedupe keeps one file per number and drops
+  the rest of the book: stop-friendly-fire posted 32 story chapters as 152
+  files, the scrape kept 53 `-part1`s, and the verifier printed
+  `chapters 53/53, unique nums 53, gaps=0, errors 0, OK` while ~60% of the
+  story — including the entire ending — never landed. On any part-suffixed
+  site: dedupe by full slug, key pending/resume by full href, order same-number
+  parts strictly after their parent, and check the total part count against
+  the TOC's raw link count rather than the unique-number count. Audit it per
+  base number — for each chapter number compare `ls out | grep -c
+  "^chapter-N-part"` against `grep -c "/slug/chapter-N-part" toc.txt` — because
+  a matching total can still hide one base number short of its parts, and only
+  the per-number diff shows which suffix block never landed.
+
+Order any same-number suffix after its parent (`chapter-526`, `chapter-526-2`, …)
+when sorting for packaging, so split parts read in sequence — a bare integer
+sort key collapses them onto one number.
 
 Test the pattern against several pages, not page 1: the malformed links cluster
 mid-book (ch63-66, ch641+), so page 1 shows no difference while the full walk
@@ -152,11 +225,18 @@ before the heading match, then apply the title regex — otherwise the
 `Chapter N: Title` paragraph is never first and the parse falls to a bare
 `Chapter N` header.
 
-**The TOC walk must stop on empty links, not status codes.** The end page
-sometimes answers 403 rather than 404 (novelfull), and mid-book pages can
-serve a full nav while returning zero chapter links. `if not links: break`
-plus a `TOC_PAGES` hard cap is the robust walk; a status-code-only check
-aborts the TOC or runs past the end.
+**The walk ends on the first 404 past the end, not on an empty page or a
+hand-set cap.** The end page sometimes answers 403 rather than 404, and a
+mid-book page can serve a full nav while returning zero chapter links — so
+`if not links: break` plus a `TOC_PAGES` hard cap (or a hand-chosen
+`seq 1 4`) stops with pages still unlisted and the book ships short while every
+printed number reads self-consistent. Continue while a page yields links,
+resolve a zero-link page from that page's own `?page=` anchors, and treat the
+first page that 404s one step past the last non-empty one as the only provable
+end: re-walk 1..N until N+1 404s, then diff the raw href count against files on
+disk. Re-run that walk after ANY truncation repair too — a recovery
+enumeration stops early exactly as the original scrape did, and a short
+recovery reads as a finished repair.
 
 **A TOC with one missing number is a SITE GAP, not a scraper bug.** Confirm it
 before reporting the book incomplete:
@@ -169,14 +249,49 @@ before reporting the book incomplete:
 parser dropped a link. Report the gap and source the chapter from a mirror
 rather than re-running the scrape.
 
+**Thousands of gaps can be the source work's own IDs, not missing uploads.** A
+translated serial may number its TOC with the ORIGINAL's chapter IDs
+(`3 → 431 → 481 → … → 5762`, thousands of numbers never assigned), so
+`max − min` proves nothing and probing every gap is wasted work. Completeness
+is scraped-file count versus TOC unique count; confirm a numeric jump is an
+artifact by reading across it — neighbours continuous means numbering, not a
+hole.
+
+**Split the two gap populations before judging either.** In one ID-numbered
+TOC 5,142 of the 5,150 gaps were ID artifacts, but the eight SMALL gaps
+printed right beside them (560, 565, 566, 568, 570, 581, 582, 583) sit among
+present numbers and are real hole candidates: probe those with both URL
+shapes (`chapter-N.html`, `chapter-N-guess-slug.html`) and source them from a
+mirror. A run that burns its budget probing every thousand-gap finds nothing
+and still ships eight holes.
+
 **A missing chapter leaves the book incomplete until it is filled from a
-mirror.** Seed the recovered file with the same `<number>-<slug>.md` convention
+mirror.** Before grafting, confirm the mirror's same-numbered chapter is the
+same story: translations split chapters differently across sites, so another
+site's chapter-N can be a different scene entirely. Grep the book for the
+missing scene's landmarks (names, places); if the arc already sits at other
+numbers and the neighbours read continuous without the gap, the gap is a
+numbering artifact of that serialization — grafting duplicates story. Decide
+by seams, not numbers. Seed the recovered file with the same
+`<number>-<slug>.md` convention
 the scraper emits (`chapter-1303-coming-to-life.html.md`) so packaging picks it
 up without touching the scripts, and verify continuity at BOTH seams: the last
 paragraph of chN must flow into the first of chN+1 (continued dialogue, a
 completed thought). Two-sided confirmation is the proof you sourced the right
 chapter and placed it correctly — a match at one seam only means the
 neighbouring chapter is right.
+
+**Recover dropped parts by importing the scraper module, not re-running the
+book.** When a number-keyed dedupe drops split parts (same number, different
+slug), the missing URLs are known exactly — walk the raw TOC yourself and diff
+the two sets. Then loop them through the scraper's own functions:
+`s.configure(slug)` once, then per URL `title, paras = s.parse(s.get(url))` and
+write `<number>-<slug>.html.md` in the scraper's own filename convention, so
+the existing sort keys and packaging pick the files up untouched. Oukoku:
+9 parts (385-2, 430-part2, six 526 side stories, 575-2) in one loop, each
+junction checked for continued prose. Keep this script next to the books (the
+`rehead_*.py` fixer family in the books tree root, not the scratch dir) — scratch
+dies at 24h.
 
 **Headings can change shape between books in the same family.** A sequel on the
 same host may drop the `Chapter N:` prefix entirely and use a bare
@@ -272,12 +387,40 @@ carousels, a login modal, a wpdiscuz comment thread.
   last chapter is wrapped in `Last chapter: &nbsp; Ch.334&nbsp; Final Chapter`,
   so the `Ch.N` marker must be stripped at any position or the header reads
   `Chapter 334 Last chapter: Ch.334 Final Chapter`.
+- The marker carries periods on BOTH sides with no space before the title
+  (`Ch.53Two Armies at War`), so a letters-then-digits strip regex never
+  fires and every header ships reading `# Ch.53Two Armies…`. Strip
+  `^\s*(?:[A-Za-z]+\.?\s*)?\d+\s*\.\s*` instead — the optional-letter
+  group must tolerate its own period, and the digits must sit directly
+  against the letters, or a partial eat leaves `74Final Chapter` behind.
 - Site markup in the body: `<glossary_translation>` pseudo-tags around proper
   nouns, plus `**…**` / `[**…**]` emphasis. Read the censored-profanity rule in
   `webnovel-scrape-pack` before writing a stripper — `Bull****` must survive.
 - Empty TOC title field → the index renders the chapter NUMBER as the title
   (`Ch.2` → `02`). Strip digits-only titles; `# Chapter 2 02` is worse than a
   bare `# Chapter 2`.
+
+## lite.wuxiaworld.com
+
+    NOVEL:  /novel/<slug>              (lists only the FIRST 100 chapters)
+    STORY:  <div class="chapter-body" id="chapter-body"> — one `<p data-uid>`
+            per paragraph, text in `<span>`s; title in `<h1>` as
+            `Chapter N: Title`
+
+- Enumerate by walking `.chapter-nav-top a.next` from chapter 1 and save as
+  you walk — the walk IS the TOC. Later chapters use split slugs (`357-1`,
+  `360-2`), dot-slugs (`117.1`), and dash-less numbers (`4241` = Side-Stories
+  45.1), all invisible to a numeric fetch and to the 100-link listing.
+- Chapter slugs carry a site prefix (`avws-chapter-N`, `tne-chapter-N`) and
+  some books start at 0 (`tne-chapter-0` is the prologue). Rename to
+  `chapter-N.html.md` before clean/pack — `clean_chapters.py`'s `chapter-\d+`
+  glob matches zero prefixed files and reports `0 of 0` on a full directory,
+  which reads as an empty book.
+- Place dash-less numeric slugs by walk order, not by parsing: `4241` sat
+  between `424` and `424-2`, i.e. part 1 of a two-parter — confirm with a seam
+  read, not the number.
+- Short chapters are this host's pacing (a few hundred words each), not
+  truncation — confirm against the page HTML before re-fetching.
 
 ---
 
@@ -440,11 +583,132 @@ re-fetches everything, there is no cache. `.bak` count 0 afterwards is the
 expected end state of a successful apply (delete the backups after verifying),
 not evidence that nothing ran.
 
+## Verify after title recovery: the header census
+
+**The header census is what catches a failed recovery, not the word count.**
+After any title-recovery pass run
+
+    grep -lE '^# [A-Za-z]*[0-9]+[. ]' out/*.md | wc -l    # must be 0
+
+An akknovel book carried `# Ch.1Returning Home` on all 275 files while the
+scrape summary reported 275/275, gaps=0, errors=0 — only the census saw it.
+The fixer (idempotent, unit-checked against six header shapes: `Ch.1Title`,
+`Ch.274 Final`, `Last chapter: Ch.275 X`, `part1` → `part1`, canonical
+headers, bare-number placeholders) rewrote every file in one pass; re-run the
+census to confirm. A bare `# Chapter N` is the correct output when the title
+after stripping is empty or digits-only — it beats a mangled one.
+
+**When only some chapters are bare, the title may sit as the first body
+paragraph.** On one novelfull book 492 files carried site titles while 60
+early chapters were bare `# Chapter N` with the title card (`Episode 1 – …`)
+as body line 1. Promote that line to the header verbatim — matching the
+site's own header style on the other files — and drop it from the body so it
+isn't duplicated. Assert the promoted line is short (<120 chars); a bare
+header still beats a mangled one. Re-run until the census shows 0 bare and
+the pass is a no-op.
+
+**A clean verifier run is not a complete book.** The pack verifier can print
+fully-clean numbers on a book that lost half its content upstream: a
+number-keyed dedupe on a part-split site kept one file per number, and the
+summary read `chapters 53/53, unique 53, gaps=0, errors 0, OK` while ~60% of
+the story was never on disk. Counts computed against the parser's own output
+are circular — the only independent gates are the TOC's raw href count and a
+read of the final chapter's tail (the truncated book stopped mid-action
+because nothing past it had been fetched). After any repack, re-run the
+wiki/kanban record with the corrected numbers; the catalog row is what future
+sessions trust.
+
+**A challenge page means substitute, not fight.** A `Just a moment...` title
+on a ~6 KB page is a JS challenge curl will never pass. Before digging at it,
+check whether the same licensed translation sits on an accessible host —
+wuxiaworld lite carried two books whose requested pages were challenge-walled.
+Name the substitution in the book's catalog note so the provenance stays
+honest.
+
+**A translator's credit paragraph is body junk on this pipeline's books, and
+its domain is NOT the scrape host.** The credit reads
+`Support the translator by reading <Book> on <their-domain> ! Thank you!` and
+arrives as the first body paragraph of a contiguous chapter block — 23 of
+3,165 in one book. Two checks catch it: sweep for `^Support the translator`
+and grep the CREDIT DOMAIN as its own string, because the scrape-host grep is
+exactly the check that misses it. Sweep the packaged txt and epub too, not just
+the chapter files, so a repack cannot resurrect it.
+
+**When a credit-style paragraph survives the shared cleaner, the fix is a
+page-local one-off followed by a FULL clean pass — never the one-off alone.**
+The shared cleaner's rules are specific (separators, MTL notes, author notes,
+watermarks); a credit it was never taught about does not look like any of them.
+Write a targeted fixer, then ALWAYS run `clean_chapters.py` after it: on the
+longest book in the library the one-off removed the 23 credits and left 20
+further stray lines (16 separators, 7 ps-notes, 1 author-note) spread across
+chapters 522-3165 that only the shared pass saw. Judge the site's credibility
+by the same rule as any junk hit: hits that read as story about copyright
+disputes, web novels, or rankings are legitimate book text and stay.
+
+**An empty ~15-byte response mid-check is a transient fetch failure, not a
+site change.** One chapter URL answered `<!DOCTYPE html>` at 15 bytes on a
+fresh page while the identical URL re-fetched at full size seconds later —
+nobadnovel is unstable, not blocking. Re-fetch the same URL before concluding
+anything, and never treat one truncated body as a gap.
+
+## Check the shelf before scraping
+
+A URL under a fresh slug can point at a series already on disk under a
+different one. `villains-diary-why-does-it-feel-like-youre-all-acting-against-me`
+arrived while `villains-diary/` was complete (480 chapters, txt+epub+pdf).
+Compare the chapter-1 slug/title against the existing book dirs before
+fetching anything, then report "already have it" instead of re-scraping.
+
+**When the user asks "is it really here", verify against the live site, not
+against your memory.** A shelf-check that only lists the directory proves
+nothing — the book can be present and short. Fetch the live index, extract its
+chapter URLs with the scraper's own pattern, and run the four checks:
+
+1. **URL-set diff both ways** — live-not-on-disk and disk-not-live against
+   `out/chapter_urls.txt`. Both must be 0.
+2. **Chapter-1 content parity** — parse the live page's story paragraphs and
+   diff them against the disk `.md` body; a per-paragraph `in` check reports
+   the count of live paragraphs missing from disk (0 expected).
+3. **Last-chapter tail parity** — the same on the final chapter, which is
+   where a truncated book shows first.
+4. **Word counts and file formats** — `wc -w book.txt` plus the three-file
+   finished-book check below.
+
+Fetch the live chapter URL from `chapter_urls.txt` rather than reconstructing
+it from the slug — nobadnovel serves a 15-byte `<!DOCTYPE html>` stub on a
+hand-built URL, which reads as a site change until you re-fetch the real one at
+full size. Report the measured numbers (480 vs 480, 0 both ways, parity 89/89),
+not "it's on disk".
+
+## Record every finished book
+
+Per series: a scrape note in the llm-wiki library catalog (row, genre census,
+chapter/word counts, file sizes), a log entry, updated index totals, and a
+completed kanban task on the `books` board. Deterministic numbers — chapter
+count, gaps, clean/touched totals, zip-entry dedupe check, page count and
+last-page text — are what make the catalog trustworthy later. The wiki's
+"scraped from" line is per-series, not global.
+
+**A repair is not finished when the books are rebuilt.** A corrected book needs
+its catalog row, the library totals, and the index line updated with the new
+numbers in the same sitting — a stale row reading 53 chapters beside a
+2,006-page pdf is the next session's false confident. Note the correction
+explicitly in the catalog rather than silently overwriting it.
+
 ## Deliverables convention
 
 `$HOME/books/<series-slug>/` holding `book.pdf`, `book.epub`, `book.txt`,
-`out/` (per-chapter markdown) and the scraper used, so a re-run can pick up new
-chapters. Scratch is pruned after 24h idle — never leave the only copy there.
+`out/` (per-chapter markdown) and the scraper used, so a re-run can pick up
+new chapters. Scratch is pruned after 24h idle — never leave the only copy there.
+
+**When the user asks for a sorted or aggregated library view, compute it from disk, not from the catalog rows.** Build the rows in one pass — per book dir, `out/chapter-*.md` count, `wc -w book.txt`, `du -sh` — and sort with `sort -t'|' -k1,1nr`. A hand-built table from the catalog disagrees with reality the moment a repair lands, and that disagreement is what surfaces a bad pack. Expect two column bases to differ from the wiki by design and say which basis you used rather than mixing them: `wc -w` counts hyphenated and quoted tokens differently than the scraper's parser, and `du -sh` includes `out/`. When the user asks for a "proper markdown table", emit real markdown with
+`|---|--------|---------:|------:|` alignment rows even in a CLI session — they are copying it somewhere that renders.
+
+**Emit only real books in a library table.** An empty book dir (created by a
+duplicate-shelf check that never fetched) shows as a `0|0|—` row at the bottom
+of a sorted listing. Filter it out before printing (`[ "$c" -eq 0 ] && continue`),
+and if the row somehow reaches the user, correct it explicitly — a phantom row
+in a count table reads as a pack that lost its chapters.
 
 **Two traps when auditing a book directory for completeness:**
 

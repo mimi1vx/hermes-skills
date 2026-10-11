@@ -44,6 +44,15 @@ def chap_num(fname):
     return int(m.group(1)) if m else 10 ** 9
 
 
+def chap_key(fname):
+    # Sort key that also orders split-chapter parts (chapter-252.html +
+    # chapter-252-2.html) -- see the note on package_book.chap_key.
+    m = re.search(r"chapter-(\d+)(?:-(\d+))?(?:-|\.|$)", fname)
+    if not m:
+        return (10 ** 9, 0)
+    return (int(m.group(1)), int(m.group(2)) if m.group(2) else 0)
+
+
 def cover_html(title, source):
     return (f'<div class="cover"><h1 class="titlepage">'
             f'{html_mod.escape(title)}</h1>'
@@ -85,7 +94,7 @@ def main():
     os.makedirs(parts_dir, exist_ok=True)
 
     files = sorted(glob.glob(os.path.join(bookdir, "out", "*.md")),
-                   key=lambda f: chap_num(os.path.basename(f)))
+                   key=lambda f: chap_key(os.path.basename(f)))
     print(f"[pdf] {len(files)} chapters, {chunk} per chunk", flush=True)
 
     doc_head = ("<!DOCTYPE html><html><head><meta charset='utf-8'><style>"

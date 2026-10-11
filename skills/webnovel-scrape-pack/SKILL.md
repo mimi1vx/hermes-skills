@@ -175,6 +175,23 @@ A site's index page loading 200 is not evidence it is scrapable, and a
 "cloudflare" grep is not a reliable block detector — challenge-platform script
 tags appear on pages that serve content fine. Judge by extracted paragraphs.
 
+## Sites seen in the wild (as of 2026-10-11)
+
+| host | status | notes |
+|------|--------|-------|
+| freewebnovel.com | scrapeable | chapter-start scoping works |
+| nobadnovel.com | scrapeable | scope to `<p class="mb-4 para">`; no-space `Ch.N` markers |
+| akknovel.com | scrapeable | same parser family; censors profanity as `f***ing` |
+| readnovelfull.com | scrapeable | clean prose, no scoping hooks — scope by paragraph index |
+| novelfull.com | scrapeable | category pages paginate; watch for split-chapter subparts |
+| lite.wuxiaworld.com | scrapeable | **preferred fallback when novellive.app is walled**: serves clean pages over curl, scope to `<div class="chapter-body" id="chapter-body">` with `<p data-uid>`; TOC lists only the first 100 chapters, so walk next-links from ch1 |
+| novellive.app | Cloudflare-walled | curl and headless browser both get the JS challenge; the same novels are usually on lite.wuxiaworld.com |
+
+`novellive.app`-hosted titles that were successfully re-sourced from wuxiaworld lite:
+The Novel's Extra, A Villain's Will to Survive. Walker + renamer script:
+`scrape_ww.py` in the per-book fixer directory (the books tree — see the
+`webnovel-library` catalog page for its location).
+
 `discover_max` must probe past the highest linked chapter (3205 here; 3206 404s),
 and the series is often still ongoing, so "completed" in a search snippet is not
 a chapter count.

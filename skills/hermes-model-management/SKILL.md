@@ -51,6 +51,23 @@ other data-training model tiers.
    After a fallback edit, verify the normalized chain order
    (`get_fallback_chain`) — no gateway restart needed, the runner re-reads
    `fallback_providers` per turn.
+   - Indexed list targets (`fallback_providers[0].model`, etc.) do NOT work
+   through `hermes config set`: the literal index is stored verbatim as a
+   stray top-level key (`'fallback_providers[0]'`) while the real list is left
+   unchanged. Mutate the list element in the dict from `load_config()` and hand
+   that dict to `atomic_config_write(cfg_path, cfg)` instead — it reads and
+   writes the resolved home, so no absolute path is needed. Clean up any stray
+   key a botched command created (`cfg.pop("fallback_providers[0]", None)`)
+   before writing. Verify with `hermes fallback list` afterward.
+   Run the edit under the Hermes CLI venv interpreter
+   (`/opt/hermes/.venv/bin/python`), not bare `python3`: `hermes_cli.config`
+   imports `yaml`/`ruamel`, so the plain interpreter raises `ModuleNotFoundError`.
+   Pinned aux tasks (`auxiliary.<task>.provider: ...`) ignore `fallback_providers` when
+   the pinned provider fails — only `auxiliary.<task>.fallback_chain` is tried for them
+   ("no fallback_chain / fallback_providers is configured — refusing to guess" in the log
+   means that). Auto tasks use the main chain. Declare both in the same order via
+   `hermes config set auxiliary.<task>.fallback_chain "<yaml list>"` (multi-line value works)
+   when the user's fallback intent should cover side-LLM work too.
 4. Contributor / data-training consent has TWO independent halves — set the
    Hermes half with tools, direct the user through the provider half:
    Hermes half: any model id matching `*-contributor` trips the data-training

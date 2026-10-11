@@ -28,9 +28,22 @@ def chap_num(fname):
     return int(m.group(1)) if m else 10 ** 9
 
 
+def chap_key(fname):
+    # Sort key that also orders split-chapter parts: some sites paginate one
+    # chapter as chapter-252.html + chapter-252-2.html. A bare int key ties
+    # and leaves their order to glob luck (stable sort), silently misordering
+    # the book. The optional -<digits> subpart breaks the tie; anything else
+    # after the number (slugs like chapter-12-slug.md) still keys sub 0, so
+    # existing books sort exactly as before.
+    m = re.search(r"chapter-(\d+)(?:-(\d+))?(?:-|\.|$)", fname)
+    if not m:
+        return (10 ** 9, 0)
+    return (int(m.group(1)), int(m.group(2)) if m.group(2) else 0)
+
+
 def load(bookdir):
     files = sorted(glob.glob(os.path.join(bookdir, "out", "*.md")),
-                   key=lambda f: chap_num(os.path.basename(f)))
+                   key=lambda f: chap_key(os.path.basename(f)))
     chapters = []
     for f in files:
         body = open(f, encoding="utf-8").read().strip()
@@ -58,8 +71,14 @@ def write_epub(chapters, path, title):
     book.add_author("Unknown")
 
     items, toc = [], []
+    seen = {}
     for num, ctitle, text in chapters:
-        c = epub.EpubHtml(title=ctitle, file_name=f"ch{num:05d}.xhtml", lang="en")
+        # Split-chapter parts (chapter-252 + chapter-252-2) share a number --
+        # suffix the file name so the zip keeps both instead of collapsing
+        # the second into the first with a Duplicate name warning.
+        seen[num] = seen.get(num, 0) + 1
+        suffix = f"-{seen[num]}" if seen[num] > 1 else ""
+        c = epub.EpubHtml(title=ctitle, file_name=f"ch{num:05d}{suffix}.xhtml", lang="en")
         paras = [p for p in text.split("\n") if p.strip()]
         c.content = "<h1>" + html_mod.escape(ctitle) + "</h1>" + "".join(
             "<p>" + html_mod.escape(p) + "</p>" for p in paras)
