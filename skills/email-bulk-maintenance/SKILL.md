@@ -104,6 +104,7 @@ so no background process ever holds delete authority.
 
 - Bulk-deleting by domain: one brand can send promos from a mailer/newsletter subdomain and orders
   plus account notices from sibling senders — split by exact sender address and verify with a subject search.
+- Never delete mail from LinkedIn mentions of Pavel Grupy Šimerda — the user wants those kept.
 - Treating "pre-order" marketing as an order: search for receipt, payment, invoice, and password subjects
   separately; only order-ready confirmations and account notices are protected.
 - Estimating counts from a truncated page: page through or use the `Found N` footer, one number per batch.
