@@ -204,6 +204,10 @@ def chap_num(fname):
 
 
 def classify(s, body_idx, body_len):
+    # Asterisk-only lines ("***", "* * *") are scene dividers, not separator
+    # furniture -- SEP's character class contains *, so exempt them first.
+    if set(s.strip()) <= set("* \t"):
+        return None
     if SEP.match(s):
         return "separator"
     if PS_NOTE.match(s):
