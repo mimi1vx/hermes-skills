@@ -378,11 +378,6 @@ re-downloading the book.
              nav chains through them -- when a solid block is absent from all
              pages, walk prev_chap links backward from a live chapter above
              the hole; the walk IS the TOC (keep `.url` sidecars).
-             Never stop at the first page that yields no NEW numbers: one book
-             hid a 372-chapter block behind a single all-known page, and another
-             cycles old ranges back in (pages 39+ repeat pages 1+). Tolerate a
-             few stale pages (3) and stop only on an empty page or repeated
-             staleness.
     URL    : three shapes, all real:
                chapter-63.html                         (no slug)   x67
                chapter-1-mt-yellows-true-monarch.html  (dash+slug) x3097
