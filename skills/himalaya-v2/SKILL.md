@@ -122,10 +122,10 @@ Global: add `-b/--backend <NAME>` to force a backend, `--log-file <PATH>` to log
 ```bash
 himalaya mailbox list --counts
 himalaya envelope list --json                  # INBOX, newest first
-himalaya envelope list -m "INBOX" --max 20 --json
+himalaya envelope list -m "INBOX" -s 50 -p 1 --json   # -s = page size, -p = page number (there is no --max)
 himalaya search --mailbox INBOX "from:boss newer_than:1d" --json
 himalaya message read 42                         # prints message-level info
-himalaya message read 42 --raw | <interpreter>     # custom rendering
+himalaya message read 42 --raw > /tmp/m42.eml    # full MIME: parse the body out, e.g. python email lib get_body(preferencelist=('plain',))
 himalaya message add 42 --flag seen
 himalaya message copy 42 --from "INBOX" --to "Archive"
 himalaya message delete 42                        # or flags add + expunge
@@ -154,11 +154,22 @@ such as `pimalaya/ortie`, consumed the same way: `{ command = ["ortie", "token",
 These cost real time to rediscover; each one silently produces wrong results rather
 than an error.
 
-- **Positional queries are greedy — options come BEFORE the query.** The trailing
-  argument is swallowed as part of the query string, so
-  `himalaya envelope search "after 2026-09-01"` treats `after 2026-09-01` as search
-  text and matches nothing (or everything). Correct shape:
-  `himalaya envelope search -s 500 "after 2026-09-01 and flag seen"`.
+- **`message read --raw` starts with kilobytes of headers — never judge content from `head`.** Save to a file and extract the text body with a MIME parser (python `email` lib, `get_body(preferencelist=('plain',))`); the opening kilobytes are always Received/ARC/DKIM headers.
+- **For window triage, paginate envelopes to files then aggregate.** Loop `-p 1..N -s 100 --json` into one file per page, then count senders / split seen vs unseen / list subjects in python — one pass beats dozens of per-sender `imap search` calls when scoping recent mail.
+- **Reliable search shape: global flags, then options, then query last.** `--json`
+  is global, so prefer `himalaya --json envelope search -m BOX -s N -p P "query"`.
+  Anything after the options is swallowed into the query string, which is why
+  the existing greedy-query rule and this one are the same rule applied twice.
+- **Message IDs are mailbox-scoped.** An envelope ID from INBOX is meaningless in
+  another mailbox — pass the same `-m <mailbox>` to `message read/delete` that
+  the envelope was listed from, or the command acts on the wrong message or
+  reports success on zero messages.
+- **Gmail labels overlap: counts double-count and deletes cross labels.** The
+  same message unread in INBOX and in a custom label inflates per-label unread
+  totals, and `message delete` trashes it everywhere, not just from one label.
+  Scope every delete set to one mailbox and verify with
+  `mailbox list --counts` before and after (inbox unread must drop, trash must
+  grow by the same amount).
 - **There is no `before` filter.** v2 dropped it; use `before:` in a query clause
   or filter on the returned date field.
 - **Join filters with `and`** — the query language is not implicit.
@@ -171,6 +182,17 @@ than an error.
   so a mark-as-read sweep cannot touch historical mail.
 - **`message delete` is trash-first**, not a hard delete: the message moves to the
   trash mailbox and is recoverable. `flags add + expunge` is the destructive path.
+- **One bad ID fails an entire batch call.** `flag add` / `message move` /
+  `message delete` with N IDs move zero messages when a single token is invalid —
+  the classic poison is two IDs glued together by concatenating ID files whose
+  last line has no trailing newline. Build ID lists with `split()`, not shell
+  word-splitting across `cat`; chunk IDs (10–50 per call) so a long sweep that
+  exceeds foreground timeouts can also run as a background job; and on a
+  zero-count result bisect the chunk instead of retrying it whole.
+- **On Gmail-over-IMAP there is no `Archive` mailbox — archive by moving to
+  `[Gmail]/All Mail`.** `message move --from INBOX --to "[Gmail]/All Mail" <ids>`
+  drops the INBOX label and keeps the mail. Verify with a `not flag seen`
+  re-search plus `mailbox list --counts` before and after.
 - **Trash folder name is not stable** — see the Bin/Trash note above.
 
 ## Setup checklist (for the agent)

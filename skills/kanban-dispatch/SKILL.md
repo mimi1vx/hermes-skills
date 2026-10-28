@@ -47,11 +47,14 @@ collect findings from the task itself.
 
 ## Failure handling
 
+- Consecutive nonzero-exit crashes trip `failure_limit` (default 2) and park the task as `blocked` — `dispatch --dry-run` then spawns 0 and the fix is `unblock <id>`, not another dispatch. Rate-limited exits (rc=75, quota wall) requeue without counting a failure no matter how many in a row, so only nonzero crashes arm the limiter. Pull the cause first from `runs <id> --json` (full error metadata, worker last-output is truncated there) plus the board log file `logs/<id>.log` sitting next to the board's kanban.db.
 - After `gave_up` the task is parked: `unblock <id>` before it can be
   redispatched.
 - A task that burns all retries on the same failure: `archive` it and file
   a FRESH task carrying the findings-so-far in its body, instead of
   unblock/dispatch loops on the dead one.
+- When `runs --json` shows only truncated status chatter with no error, read the worker session transcript from state.db (`messages` table by `session_id`, last rows) and check the final assistant message's `finish_reason` — `length` plus repeated short phrases means the model is looping at its token limit, so fix with a stronger model or primary-quota recovery, never more retries on the same weak fallback.
+- When the worker dies with "every provider in the fallback chain kept failing over", get the per-provider breakdown before acting: grep the worker `session_id` in the errors and agent logs for one line per provider/model attempt — the single failover message hides which entries are durably dead (repeated HTTP 400 model-unavailable on every path) versus transiently down (connection errors), and the fix differs per case (drop dead entries from the chain via `hermes config set fallback_providers` versus retry once the endpoint is back). A 400 on the worker path alone is not proof the model is dead — the same model string can succeed interactively while the gateway worker path gets a protocol/unavailable 400, so confirm the entry fails off the worker path too before dropping it.
 - Triage crashes with full `show`/`runs` output, never the trimmed
   one-line `worker_output` — identical prefixes across runs are a
   truncation artifact, not proof the runs died at the same point.
@@ -62,6 +65,12 @@ collect findings from the task itself.
   `security.allow_data_training_tiers_noninteractive`) — the refusal
   names the flag. Never set it silently: the suffix means the provider
   trains on prompts/completions, so ask the user first.
+- Edit kanban/fallback config only via `hermes config set` — direct
+  edits to config.yaml are refused as security-sensitive. Allow a profile
+  with `hermes config set kanban.dispatch_profiles '["default"]'`; drop a
+  duplicated primary from the chain with `hermes config set
+  fallback_providers '[...]'` carrying only surviving entries (`fallback
+  remove` is an interactive picker, unusable headless).
 
 ## Pitfalls
 
@@ -83,3 +92,22 @@ on a `crashed` run.
 - Check `show` before `complete` — runs that finish normally may already
   terminal-close the task, and `complete` then refuses with
   unknown-id-or-terminal-state — harvest the comments and move on.
+- Harvested file artifacts (UID lists, ID sets) carry no shape guarantee —
+  head the file before building commands from it: a single comma-joined
+  line holds hundreds of IDs that `wc -l` reports as 1, so count from
+  content (separators), never from lines.
+- A dry-run that Skips every task (`non-spawnable assignee — terminal lane`,
+  or `unassigned` with no worker profile present) means nothing on this box
+  will spawn — report the task as queued, not running, and stop; re-running
+  dispatch loops on the same verdict instead of starting work. Triage in order: `assignees` (profile on disk?), then `diagnostics --json` (a `task_id: null` entry reports the `kanban.dispatch_profiles` fail-closed state), then `hermes config path` plus the `kanban:` / `dispatch_profiles:` block — a present-but-empty list names no valid profile so everything is refused, while omitting the key allows any profile.
+- A fallback entry duplicating the primary adds no quota resilience — the
+  same wall kills both, so keep only genuinely alternate provider/model entries.
+- When workers die with "custom didn't respond", curl every custom
+  base_url in BOTH `fallback_providers` and `custom_providers` — the two
+  lists diverge (stale LAN IPs after DHCP moves) and the worker tries the stale one. A 200 plus a full model list is not proof of health — probe with a real minimal chat completion too, since a model listing endpoint can report downloaded-but-unloaded models while inference itself fails.
+- Manual `dispatch` reporting `Spawned: 0` right after a reclaim usually
+  means the rate-limit cooldown guard, not a stuck board — the gateway
+  dispatcher (every `dispatch_interval_seconds`) picks the task up within a
+  minute, so confirm with `show` for a new running run before re-dispatching.
+- `reclaim` kills a heartbeat-healthy run — use it only to force an
+  immediate retry on explicit user ask, always with `--reason` recorded.

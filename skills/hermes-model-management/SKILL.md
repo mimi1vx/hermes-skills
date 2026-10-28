@@ -89,4 +89,8 @@ other data-training model tiers.
 - Never present a silent interactive prompt as broken — the per-selection
   confirm is intentional even with the noninteractive flag set.
 - Price and region facts rot fast; verify against the vendor's current terms
-  instead of quoting remembered numbers.
+instead of quoting remembered numbers.
+- Switching `model.provider` leaves the previous provider's `model.base_url`
+behind — clear it (`hermes config set model.base_url ""`) or calls silently
+route at the old endpoint; re-read the `model:` block and probe it live
+before declaring the switch done.

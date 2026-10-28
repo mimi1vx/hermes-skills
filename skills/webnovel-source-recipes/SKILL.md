@@ -25,7 +25,9 @@ audits). Two scripts ship with this skill: `scripts/audit_chapters.py`
 ## When to Use
 
 - A series URL on novelfull, hiraethtranslation (or any Madara/mangareader.to
-  clone), akknovel, botitranslation, nobadnovel, freewebnovel or wuxiaworld lite
+  clone), wuxiaworld.site, akknovel, botitranslation, brightnovels, nobadnovel,
+  freewebnovel, novellunar,
+  shanghaifantasy or wuxiaworld lite
   arrives and you
   need the story selector, the ad selectors, and the TOC/pagination scheme
   before writing a scraper.
@@ -266,8 +268,14 @@ mirror. A run that burns its budget probing every thousand-gap finds nothing
 and still ships eight holes.
 
 **A missing chapter leaves the book incomplete until it is filled from a
-mirror.** Before grafting, confirm the mirror's same-numbered chapter is the
-same story: translations split chapters differently across sites, so another
+mirror.** Before hunting, check whether the scraped host ORIGINATES the
+translation (translator credit names the host's own team): an origin host has
+no upstream mirror, so gaps in its numbering are skipped uploads, not content
+sitting elsewhere — confirm with the seam read and stop there. Also compare
+word counts around the gaps against the book average first: uniform length
+rules out merged content, while ~2x length in a neighbour means it absorbed
+the missing number and nothing is lost. Only then confirm the mirror's
+same-numbered chapter is the same story: translations split chapters differently across sites, so another
 site's chapter-N can be a different scene entirely. Grep the book for the
 missing scene's landmarks (names, places); if the arc already sits at other
 numbers and the neighbours read continuous without the gap, the gap is a
@@ -339,13 +347,46 @@ TOC check (`NameError` on first use), so a verification script ends up
 re-typing the regex — and a second copy of the pattern is exactly what drifts
 from the first. Split the globals out and let the probe call the real `toc()`.
 
+### readnovelfull.com: same-translation mirror with an AJAX chapter archive
+
+Different markup from novelfull.com despite the name. The series page lists
+only ~31 links (first 30 + the latest-chapter shortcut) and `?page=N`
+re-serves the same set — the full TOC rides behind
+`/ajax/chapter-archive?novelId=<id>`, with `<id>` from the series page's
+`novel-id="<id>"` attribute. Chapter slugs carry `-v1` suffixes; store hrefs
+verbatim, never rebuild them from titles.
+
+    STORY: bare `<p>…</p>` sequences (`<br>`-separated) — the first paragraph
+           is a translator-credit line and the last is an empty `<p>`; drop
+           both, keep the rest verbatim.
+    TITLE:  `<title>` as `Read <Book> Chapter <N> - <Title> online free - …`.
+
+Before grafting from here, paragraph-diff one chapter against the shelf copy
+(head and tail identical = same translation); then the standard graft rule
+applies (both seams, zero 10-gram overlap).
+
 **Junk hits on this site are almost all legitimate.** Measured false positives:
 "copyright" (a skill named in the story), "reply to" (dialogue), a wikipedia URL
 inside a `[TL: …]` translator note, and "monthly pass"/"subscribe" — characters
 discussing web novels ON PAGE, because the author writes about novel-site
-rankings. Also fullwidth `＊＊＊＊＊` scene dividers, and a skill name in literal
-angle brackets which is not markup. Only the ad iframes were real
-contamination.
+rankings. Also fullwidth `＊＊＊＊＊` scene dividers, a skill name in literal
+angle brackets which is not markup, and balanced `<ul>…</ul>` blocks wrapping
+background-chatter dialogue (overheard whispers, crowd reactions) — translator
+formatting that renders as literal text, keep verbatim. Only the ad iframes
+were real contamination — plus two rarer kinds, both verified per occurrence.
+Uploader extraction residue arrives as an inline `<segment NNNN ¶>` token
+glued to a paragraph tail: delete the token, keep the sentence. CJK in the
+body splits two ways: kaomoji emoticons built from CJK strokes
+(`o(一︿一+)o`) must be ASCII-ized (`o(-^-+)o`) because the PDF font has no
+such glyphs, but an untranslated CJK prose line stays verbatim — translating
+it invents text, and the surrounding English usually carries the meaning.
+Note it in the catalog: the PDF renders blanks with glyph warnings while
+txt/epub are unaffected. Determine the missing set by querying the font's own
+cmap (`fontTools`: `TTFont(path).getBestCmap()`), never by reading the warning
+text — build warnings truncate (`…and N others`) and box-drawing, math, and
+combining marks usually survive while Thai, jamo, katakana, and Han do not.
+Fix exactly the missing set with 1:1 shape mappings, then re-query until zero
+remain.
 
 ---
 
@@ -375,6 +416,50 @@ carousels, a login modal, a wpdiscuz comment thread.
   re-downloading the book.
 
 ---
+
+## wuxiaworld.site — Madara with an AJAX-only chapter list
+
+Same theme family as hiraethtranslation, but the series page carries NO
+server-side chapter list at all — only the series URL, the chapter-1 link,
+and the latest-chapter link. `?novel-paged=N` re-serves page 1, and
+`admin-ajax.php?action=manga_get_chapters&manga=<id>` answers 400 even with
+the page's own manga id and cookies. Do not burn time on the AJAX route:
+walk next-links from chapter-1, the walk IS the TOC.
+
+    STORY:  <div class="reading-content"> … cut at
+            <div class="entry-header footer">  (chapter nav pager)
+    TITLE:  <title> as `Book - Chapter N - Real Title - WuxiaWorld` — strip
+            the book prefix and the trailing host, keep the remainder.
+            (The `<h1>` is book-plus-number only; reject it.)
+    NEXT:   last `/chapter-/` link on the page that is not the current URL;
+            the novel index URL (no `/chapter-/`) ends the walk.
+
+- Key files AND the resume guard on the full URL slug, and record each
+  step's next URL in a sidecar (`.<slug>.url`) so skipped files still advance
+  the walk — without it a resumed run re-fetches nothing but also goes nowhere.
+- Gate the walk's end against the series page's latest-chapter link (seen:
+  `chapter-587-end/`): the final file's slug must match it, or the walk
+  stopped early and every downstream count is self-consistent but short.
+- Suffixed end slugs (`chapter-587-end`) are ordinary steps of the walk, not
+  parts — file them verbatim under their full slug.
+- Check the series page's tag links for machine-translation markers
+  (`/tag/…-mtl/`, `…-machine-translated-novel/`) before the run: an MTL tag
+  does not stop the scrape but must be noted in the catalog entry, and the
+  probe read must be harder (spot-check mid-book chapters, not just ch1).
+- Untitled chapters are common (seen: 98 of 587, in contiguous blocks).
+  `<title>` with no title segment (`Book - Chapter N - WuxiaWorld`) means
+  genuinely untitled — confirm by sampling live titles across the ranges,
+  then keep bare `# Chapter N`; never ship the book-prefixed shape (the header
+  census catches it). Tolerate bracket tags between number and dash when
+  recovering titles (`Chapter 587 [END] - Happy Ending` → `Happy Ending`).
+- A graft onto this host takes the walker's bare `chapter-N.md` filename,
+  since slugs carry no title.
+- A 200 page with zero story paragraphs is an empty stub, not a chapter —
+  gate gaps on parse success (reading-content present and non-empty), never
+  on the status code. Confirm the site's own nav skips the number, then
+  source it from a mirror under the standard graft rule.
+- Export the sidecar chain to `out/chapter_urls.txt` when the walk finishes,
+  so future URL-set diffs have something to diff against.
 
 ## akknovel.com
 
@@ -421,6 +506,35 @@ carousels, a login modal, a wpdiscuz comment thread.
   read, not the number.
 - Short chapters are this host's pacing (a few hundred words each), not
   truncation — confirm against the page HTML before re-fetching.
+
+---
+
+## hostednovel.com
+
+    TOC:    /novel/<slug>?page=N, 100 per page — but pages are CUMULATIVE
+            (page 2 shows 1–200, not 201–300). Union pages until one yields no
+            new numbers.
+    STORY:  <div id="chapter-content"> (close by nesting count), no ad iframes
+    TITLE:  <div id="chapter-title"> as `Chapter N: Title`
+
+- **TOC links can be dead and probes flap.** Some linked numbers 404
+  (removed uploads) while neighbours live — probe every linked URL with a
+  delay between requests and retry 404s with backoff before trusting a dead
+  list; a no-delay sweep reports live chapters as dead. Scrape only the
+  confirmed-live set and record the real gaps.
+- **Long chapters split as dot-suffixed parts** (`chapter-610.1`, `.2`,
+  sometimes `.3`) with no bare page, or bare + `.2` where the bare page's own
+  title ends `(1)`. Enumerate every href shape from the TOC, never bare
+  integers alone; key files, pending, and resume on the full suffix
+  (`chapter-0510-2.md`); stamp `(Part N)` in the header.
+- **Part markers leak into titles.** Split-part pages title themselves
+  `Chapter 510: 1: Our Ancestors' Conclusion (1)` — concatenating that with
+  the file number doubles every header. Strip the leading `N:` and trailing
+  `(N)` and rely on the `(Part N)` stamp instead; census afterwards.
+- **Translator credits can be a single mid-chapter line** (`… Please read
+  this novel in <domain> -<name>`), not just a first-paragraph block. Sweep
+  for the translator name + domain, not just the `^Support the translator`
+  anchor.
 
 ---
 
@@ -486,6 +600,74 @@ so no cleanup pass is needed. Check the TOC's `tier` field, not just
 
 ---
 
+## brightnovels.com — Laravel/Inertia, story inside `data-page` JSON
+
+Every page is a shell: `<title inertia>Bright Novels</title>`, no story markup.
+The series object, the TOC, and the chapter body all ride in the escaped JSON
+of the `<div id="app" data-page="...">` attribute (`html.unescape`, then the
+next literal `"` ends the attribute — the payload itself contains no literal
+quotes). Parse it once per chapter page:
+
+```python
+props = json.loads(html.unescape(payload))["props"]
+# props["component"] is "Chapter/Show" or "Series/Show"
+series = props["series"]            # id, title, slug
+ch = props["chapter"]               # title (may be null), slug, number, content HTML
+toc = props["allChapters"]          # FULL TOC: [{id, slug, name, number}]
+```
+
+    TOC:    chapter 1's `allChapters` — the complete list, no walk needed
+    CHAPTER:/series/<series-slug>/<chapter-slug>  (slug is the bare number)
+    STORY:  `chapter.content` HTML — one `<span style="font-weight: 400">`
+            per paragraph, `\r\n\r\n&nbsp;` between them, `<h1>` title echo first
+    TITLE:  `chapter.title`, null on untitled chapters — keep bare `# Chapter N`
+
+- **Confirm the series with the escaped grep before writing any parser.** A
+  plain-text grep for `totalChapters` matches nothing — the payload is
+  HTML-escaped, so grep the escaped form (`totalChapters&quot;:`) or unescape
+  first. One cheap grep confirms series id, slug, and chapter total before
+  parsing code exists, and tells a missing-book apart from a broken pattern.
+- **The chapter page IS the TOC.** Fetch chapter 1 once: its `allChapters`
+  carries every entry (1,280 on the first book), while the dedicated
+  `/series/<slug>/chapters` JSON endpoint caps at 1,000 and silently drops the
+  head of the book. When any list endpoint returns a round number, cross-check
+  it against the embedded payload before concluding the book is short.
+- **The tab endpoints still report the true count.** `/series/<slug>/chapters/free`
+  returns the same capped 1,000-entry list but carries a `total` field with the
+  real chapter count — read `total` as the independent size gate instead of
+  trusting the list length.
+- **A missing chapter returns 200 with the SERIES page, not a 404.** The
+  fallback body is byte-identical in size to `/series/<slug>` and its payload
+  parses as `Series/Show` with no `chapter` key. Gate gaps on the `component`
+  field (or the missing key), never on the status code — and require the parse
+  to succeed, so a fallback never writes an empty chapter file.
+- **Drop the `<h1>` title echo** before writing: the content opens with
+  `Chapter N: Title` as its first block. Match it case-insensitively against
+  the recovered header (and the bare `Chapter N` form) and pop it, or every
+  chapter opens with its own heading doubled.
+- **Lock fields ride along, check them once.** Each TOC/chapter entry carries
+  `is_premium` and `price`; confirm `premium/chapters` totals zero before
+  assuming the whole book is fetchable — a nonzero count means purchases, not
+  more scraping.
+- **Count duplicate numbers in `allChapters` before the run.** Split chapters
+  share one number under different slugs (`307-1`, `307-2`, both number 307),
+  so `len(toc)` exceeds the unique-number count by exactly the part surplus. A
+  resume guard keyed on the output filename writes the first part, then skips
+  the second as already-cached with zero errors. Key dedupe, pending, AND the
+  resume check on the full slug; store parts as `chapter-0307-2.md` with a
+  `(Part N)` header stamp (the packager's `(\d+)-(\d+)` sort key orders them),
+  and confirm continuity at BOTH seams before packaging.
+- **Some chapters are plain text, not span-wrapped.** Most bodies are one
+  `<span>` per paragraph, but a few carry the whole chapter as a single text
+  node with literal blank-line separators. A tag-scoped parser reads those as
+  2 "paragraphs" (title echo + one giant block) and ships a wall of text.
+  Split text nodes on blank lines (`re.split(r"\r?\n\s*\r?\n", data)`)
+  inside the parser itself, not as a post-pass — and refuse to write any
+  chapter under ~3 paragraphs so atypical shapes land in the error log instead
+  of on the shelf.
+
+---
+
 ## nobadnovel.com / freewebnovel.com — reference schema
 
     STORY:  <p class="mb-4 para">
@@ -508,6 +690,15 @@ and the DISPLAY text of each `<a>` is the only place a title exists:
 just `Book Title c1 - Snippet` — useless. So freewebnovel's
 `og:novel:chapter_name` trick does NOT apply here; parse the index once and
 re-head from it with a small script kept alongside the book.
+
+**Caveat.** Some nobadnovel books DO carry a real chapter title in the
+chapter-page `<h1>` (observed: `Chaotic Ruins; Salvaged by the System`), while
+others follow the recipe above and ship only `Book Title cN - Snippet`. Probe
+3–4 chapter pages spread across the book before assuming the index-only path:
+if the `<h1>` is a real title, the scraper's `parse_chapter` already captures
+it and no re-heading pass is needed. If it is the book title + `cN`, follow the
+index-anchor recovery. A mid-book format change is possible, so check spread-out
+pages, not just chapter 1.
 
 The marker regex is the load-bearing part — the marker is
 `<optional letters><digits><optional period>` with the letters sitting DIRECTLY
@@ -583,6 +774,58 @@ re-fetches everything, there is no cache. `.bak` count 0 afterwards is the
 expected end state of a successful apply (delete the backups after verifying),
 not evidence that nothing ran.
 
+## novellunar.com — Next.js behind Cloudflare; scrape through the cleared browser, never curl
+
+    TOC:    /novel/<slug> shows 1–50 of N with a numbered pager; chapter bodies
+            carry no usable pagination — enumerate 1..N directly off
+            /novel/<slug>/chapter/<N>
+    STORY:  <article> innerText (spans; paragraphs separated by blank lines)
+    TITLE:  <title> in two shapes: `… Chapter N: Name: Chapter N: Name - Read Free …`
+            or `… Chapter N Name: Chapter N Name - …`; some pages already match
+            the bare name
+
+- curl 403s even with a browser UA — the clearance cookie is httpOnly in the
+  browser profile and never leaves it. Clear the Turnstile once in the real
+  browser (click the Verify-you-are-human checkbox inside the challenge
+  iframe), then do ALL fetching as in-page fetch() off the cleared session —
+  never drop back to curl for transport.
+- Fan chapter ranges out to parallel workers sharing the cleared session:
+  fetch-only loops, no navigation (concurrent fetches do not race a tab), ~10
+  chapters per call, persist each batch to disk before the next call so a
+  spillover or timeout loses at most one batch; assemble afterwards.
+- Detect fallback titles by the `Read Free` suffix, not by the absence of the
+  word Chapter — clean titles can contain it (`Heroine is Absent From This
+  Chapter`) and misdetect as fallback. Parse the fallback shape with
+  `Chapter\s+\d+\s*:?\s*(.+?)\s*:\s*Chapter\s+\d+`, and html-unescape
+  both titles and bodies (entities ride in both).
+
+## shanghaifantasy.com — WordPress REST TOC, story in `div.contenta`
+
+    TOC:    /wp-json/fiction/v1/chapters?category=<cat>&order=asc&page=N&per_page=50
+            (cat id from `data-cat` on `#chapterList`; gate completeness on the
+            X-WP-Total / X-WP-TotalPages headers, not the page count)
+    STORY:  <div class="contenta ..."> with plain `<p>` children — no story
+            class, so anchor the container and cut at the comments/nav markers
+    CHAPTER:/<series-slug>-chapter-<N>/ (site-rooted, no /series/ or /novel/ prefix)
+
+- **Read `locked` before fetching.** Each TOC entry carries `locked` (+`price`);
+  locked chapters return teasers. Only a zero count means the whole book is fetchable.
+- **Read the series page's own counters before hunting gaps.** The series page
+  shows `Total Chapters` and `Translated Chapters` — the translator's own
+  completeness claim, independent of the scrape. When both agree with the TOC
+  unique count, missing numbers are the site's own numbering (skipped uploads),
+  not content to find elsewhere; when `Translated` lags `Total`, the tail is
+  genuinely untranslated, not a scraper shortfall.
+- **The API titles are bare numbers** (`Chapter 85`) — the real title lives ONLY
+  in the chapter body, second paragraph, as `Chapter N: Title`. Promote it to
+  the header and drop it from the body; never ship the API title.
+- **Template furniture rides inside the container.** Strip in this order: the
+  leading rating plea (`Please give the novel a rating…`), the donation plea
+  (`Your donations not only show appreciation…`) plus any ko-fi.com URL line,
+  a trailing bare `Next` nav bleed, and the translator sign-off (`[Translator]`
+  line plus bio line). Keep every match line-anchored — only paragraph-initial
+  or paragraph-final position marks these as furniture rather than prose.
+
 ## Verify after title recovery: the header census
 
 **The header census is what catches a failed recovery, not the word count.**
@@ -597,6 +840,12 @@ The fixer (idempotent, unit-checked against six header shapes: `Ch.1Title`,
 headers, bare-number placeholders) rewrote every file in one pass; re-run the
 census to confirm. A bare `# Chapter N` is the correct output when the title
 after stripping is empty or digits-only — it beats a mangled one.
+
+**A census hit can be a legitimate number-led title.** `# 305 Years In The
+Sect` matches `^# [A-Za-z]*[0-9]+[. ]` but the number is story content, not a
+leftover marker — the TOC slug (`chapter-252-305-years-in-the-sect`) carries
+the same title, which is the confirmation. Strip a leading number only when
+it is a leftover chapter marker; never when it is part of the title.
 
 **When only some chapters are bare, the title may sit as the first body
 paragraph.** On one novelfull book 492 files carried site titles while 60
@@ -623,7 +872,15 @@ on a ~6 KB page is a JS challenge curl will never pass. Before digging at it,
 check whether the same licensed translation sits on an accessible host —
 wuxiaworld lite carried two books whose requested pages were challenge-walled.
 Name the substitution in the book's catalog note so the provenance stays
-honest.
+honest. When curl fails, allow exactly one real-browser check for an
+interactive widget: a non-interactive `performing security verification` loop
+or an `Attention Required!` page whose only button reveals debug info has
+nothing to click, and further attempts never clear it. Stop there, park the
+book with no catalog entry and no stub directory, and ask the user for an
+alternate source URL — do not burn the session blind-probing mirrors for a
+title with no known accessible host. When the widget IS clickable and the
+challenge clears, curl still 403s — scrape as in-page fetch() off the cleared
+session per the novellunar.com recipe above.
 
 **A translator's credit paragraph is body junk on this pipeline's books, and
 its domain is NOT the scrape host.** The credit reads
@@ -683,7 +940,8 @@ not "it's on disk".
 ## Record every finished book
 
 Per series: a scrape note in the llm-wiki library catalog (row, genre census,
-chapter/word counts, file sizes), a log entry, updated index totals, and a
+chapter/word counts, file sizes), a log entry, updated index totals, the slug
+added to the verifier's book list, and a
 completed kanban task on the `books` board. Deterministic numbers — chapter
 count, gaps, clean/touched totals, zip-entry dedupe check, page count and
 last-page text — are what make the catalog trustworthy later. The wiki's
@@ -695,13 +953,20 @@ numbers in the same sitting — a stale row reading 53 chapters beside a
 2,006-page pdf is the next session's false confident. Note the correction
 explicitly in the catalog rather than silently overwriting it.
 
+**Insert a catalog row by anchoring on its neighbour, never by replacing it.**
+A patch whose old string is the existing final row and whose new string holds
+only the added row silently eats the anchor — the table loses a book and the
+re-added row risks stale numbers. Put the anchor row unchanged in BOTH strings
+(append pattern), then assert the row count grew by exactly one and the totals
+still recompute from the rows.
+
 ## Deliverables convention
 
 `$HOME/books/<series-slug>/` holding `book.pdf`, `book.epub`, `book.txt`,
 `out/` (per-chapter markdown) and the scraper used, so a re-run can pick up
 new chapters. Scratch is pruned after 24h idle — never leave the only copy there.
 
-**When the user asks for a sorted or aggregated library view, compute it from disk, not from the catalog rows.** Build the rows in one pass — per book dir, `out/chapter-*.md` count, `wc -w book.txt`, `du -sh` — and sort with `sort -t'|' -k1,1nr`. A hand-built table from the catalog disagrees with reality the moment a repair lands, and that disagreement is what surfaces a bad pack. Expect two column bases to differ from the wiki by design and say which basis you used rather than mixing them: `wc -w` counts hyphenated and quoted tokens differently than the scraper's parser, and `du -sh` includes `out/`. When the user asks for a "proper markdown table", emit real markdown with
+**When the user asks for a sorted or aggregated library view, compute it from disk, not from the catalog rows.** Build the rows in one pass — per book dir, `out/chapter-*.md` count, `wc -w book.txt`, `du -sh` — and sort with `sort -t'|' -k1,1nr`. A hand-built table from the catalog disagrees with reality the moment a repair lands, and that disagreement is what surfaces a bad pack. Expect two column bases to differ from the wiki by design and say which basis you used rather than mixing them: `wc -w` counts hyphenated and quoted tokens differently than the scraper's parser, and `du -sh` includes `out/`. Superlatives (`largest`, `longest`) need the same treatment: sort all books and read the top off the result, never assert it from memory of the book just packed. When the user asks for a "proper markdown table", emit real markdown with
 `|---|--------|---------:|------:|` alignment rows even in a CLI session — they are copying it somewhere that renders.
 
 **Emit only real books in a library table.** An empty book dir (created by a
@@ -730,3 +995,6 @@ ends `%%EOF`, and unique chapter numbers in `out/` are gapless against the max.
 an existing packaging venv (ebooklib, weasyprint, pypdf installed) before
 creating a new venv; a fresh `uv venv epubenv` under the book directory works
 too, but reusing the existing one avoids a multi-hundred-MB reinstall per book.
+When the shared venv lacks one package (no pip inside, so `pip install` fails),
+extend it in place — `uv pip install --python <venv>/bin/python <pkg>` —
+rather than building a second venv around the gap.

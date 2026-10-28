@@ -37,6 +37,16 @@ himalaya imap search -m Inbox --from "sender" --before <YYYY-MM-DD> > set.txt 2>
 Useful axes: `--from`, `--subject`, `--before/--since`. `--subject` is
 ASCII-only (see pitfalls). For multi-word or negated envelope queries use
 `himalaya envelope search -m MBOX --json "from X and not subject Y"`.
+
+Discover candidate senders before scoping: the newest page alone can be
+burst-skewed by one active thread, so sample slices across the mailbox
+depth (`envelope list -m MBOX -p <N> -s 500 --json` for several widely
+spread pages plus the newest), save each to a file, and aggregate `from`
+addresses across all slices — full-mailbox `imap search --from` counts
+only pay off once the candidates are known. Frame the cleanup with an
+age distribution first (`imap search -m MBOX --before YYYY-MM-DD` at
+1/2/3-year cutoffs); it decides whether rules need a `--before` cutoff
+at all.
 Purging a whole label mailbox: `imap search -m LABEL` with no criteria
 returns every UID in it. For whole-account totals use `mailbox list
 --counts` (one STATUS per mailbox, slow on many labels) and split its
@@ -54,10 +64,12 @@ cat keep1.uids keep2.uids | sort -n -u > keep.uids
 comm -23 all.uids keep.uids > del.uids
 ```
 
-Typical keep-set: order/receipt/invoice/payment subjects, password/
-verification/security subjects, the user's own-domain subjects, security
-and dependency-update senders. Verify each keep-set returns its expected
-count before subtracting.
+Typical keep-set: order/receipt/invoice/payment subjects plus the
+mailbox locale's commercial stems (ASCII stems only, e.g. Czech
+faktura/objedn/platba — diacritic forms silently match nothing, see
+pitfalls), password/verification/security subjects, the user's
+own-domain subjects, security and dependency-update senders. Verify each
+keep-set returns its expected count before subtracting.
 
 ### 3. Present the approval batch, then move in chunks
 
