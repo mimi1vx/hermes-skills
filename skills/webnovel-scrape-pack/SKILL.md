@@ -395,7 +395,10 @@ re-downloading the book.
              one book, up to 3 parts). The served `<title>` keeps the dot,
              so it -- not the URL -- decodes (N, P); file as `chapter-N-P`
              so the numeric sort orders parts, header `Chapter N (Part P)`
-             with the heading's own "(part P)" suffix peeled.
+             with the heading's own "(part P)" suffix peeled. A fifth shape
+             drops the `chapter-` prefix entirely (`485-intervening.html`)
+             -- these never match a chapter-number TOC regex, find them
+             through the live neighbors' prev/next links.
 
 **Numbering drifts from the URL.** From ~ch2962 the site's own numbering is
 offset by two (URL `chapter-2962` serves "Chapter 2960") and the offset grows.
